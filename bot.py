@@ -19,12 +19,10 @@ def webhook():
     TOKEN = os.environ.get("TOKEN")
     GEMINI_KEY = os.environ.get("GEMINI_KEY")
     
-    # Прямой вызов v1beta для модели gemini-1.5-flash
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+    # Используем версию v1 и самую стабильную модель gemini-1.0-pro
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.0-pro:generateContent?key={GEMINI_KEY}"
     
-    payload = {
-        "contents": [{"parts": [{"text": text}]}]
-    }
+    payload = {"contents": [{"parts": [{"text": text}]}]}
     
     try:
         response = requests.post(url, json=payload)
@@ -33,10 +31,9 @@ def webhook():
         if response.status_code == 200:
             reply = res_data['candidates'][0]['content']['parts'][0]['text']
         else:
-            reply = f"Ошибка {response.status_code}: {res_data.get('error', {}).get('message', 'Неизвестная ошибка')}"
-            
+            reply = f"Ошибка {response.status_code}: {res_data.get('error', {}).get('message', 'Ошибка API')}"
     except Exception as e:
-        reply = f"Системная ошибка: {str(e)}"
+        reply = f"Ошибка: {str(e)}"
             
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
                   json={"chat_id": chat_id, "text": reply})
