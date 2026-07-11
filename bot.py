@@ -22,18 +22,18 @@ def webhook():
     
     reply = ""
     try:
-        # Настраиваем официальную библиотеку Google
-        genai.configure(api_key=GEMINI_KEY)
+        # Настраиваем SDK с принудительным использованием стабильной версии v1
+        genai.configure(api_key=GEMINI_KEY, api_version='v1')
         
-        # Вызываем самую стабильную модель через SDK
+        # Используем модель, которая в v1 доступна всем
         model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(text)
         
         reply = response.text
     except Exception as e:
-        reply = f"Ошибка официального SDK: {str(e)}"
+        reply = f"Ошибка SDK v1: {str(e)}"
             
-    # Отправка ответа в Telegram
+    # Отправка ответа
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
                   json={"chat_id": chat_id, "text": reply})
             
