@@ -4,51 +4,52 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# Твой ID, который ты прислал
+# Твой ID, чтобы бот не отвечал сам себе (защита от цикла)
 MY_ID = "1717246201"
 
 @app.route('/', methods=['POST'])
 def webhook():
     data = request.json
-    if not data or 'message' not in data:
+    # В Telegram Business приходят разные типы данных, проверяем наличие сообщения
+    if not data or 'business_message' not in data:
         return "ok", 200
         
-    message = data['message']
-    chat_id = message['chat']['id']
-    sender_name = message['from'].get('first_name', 'Неизвестный')
-    text = message.get('text', '')
+    msg = data['business_message']
+    chat_id = msg['chat']['id']
+    text = msg.get('text', '')
     
+    # 1. Защита от зацикливания
+    if str(msg['from']['id']) == MY_ID:
+        return "ok", 200
+
+    # 2. Получаем ключи
     TOKEN = os.environ.get("TOKEN")
     API_KEY = os.environ.get("YANDEX_API_KEY")
     FOLDER_ID = os.environ.get("YANDEX_FOLDER_ID")
     
-    # Бот игнорирует сообщения от тебя, чтобы не было зацикливания
-    if str(chat_id) == MY_ID:
-        return "ok", 200
-
-    # Запрос к YandexGPT для анализа входящего сообщения
+    # 3. Запрос к YandexGPT для генерации ответа
     url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
     headers = {"Authorization": f"Api-Key {API_KEY}", "x-folder-id": FOLDER_ID}
     
     payload = {
         "modelUri": f"gpt://{FOLDER_ID}/yandexgpt-lite",
-        "completionOptions": {"temperature": 0.3},
+        "completionOptions": {"temperature": 0.6},
         "messages": [
-            {"role": "system", "text": "Ты личный секретарь. Анализируй сообщение: кто пишет, суть, степень срочности. Предложи вариант ответа."},
+            {"role": "system", "text": "Ты — Казбек (личный секретарь). Отвечай вежливо и кратко от первого лица на сообщения собеседника."},
             {"role": "user", "text": text}
         ]
     }
     
     try:
         response = requests.post(url, headers=headers, json=payload).json()
-        analysis = response['result']['alternatives'][0]['message']['text']
+        reply = response['result']['alternatives'][0]['message']['text']
     except Exception as e:
-        analysis = f"Не удалось проанализировать сообщение: {str(e)}"
+        reply = "Извините, я сейчас не могу ответить."
     
-    # Отправляем отчет ТЕБЕ
-    notification = f"📩 Новое сообщение от {sender_name}:\n{text}\n\n🤖 Анализ:\n{analysis}"
+    # 4. ОТВЕТ ЧЕЛОВЕКУ (используем sendMessage в чат отправителя)
+    # Telegram Business работает через обычный API ботов
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
-                  json={"chat_id": MY_ID, "text": notification})
+                  json={"chat_id": chat_id, "text": reply})
             
     return "ok", 200
 
