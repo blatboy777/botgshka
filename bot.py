@@ -4,30 +4,6 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# Переменная для сохранения найденной рабочей модели
-WORKING_MODEL = None
-
-def get_working_model(api_key):
-    global WORKING_MODEL
-    if WORKING_MODEL:
-        return WORKING_MODEL
-        
-    # Спрашиваем у Google список всех доступных моделей для твоего ключа
-    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-    try:
-        resp = requests.get(url)
-        if resp.status_code == 200:
-            models_data = resp.json().get('models', [])
-            for m in models_data:
-                # Ищем первую модель Gemini, которая поддерживает генерацию текста
-                if 'generateContent' in m.get('supportedGenerationMethods', []) and 'gemini' in m.get('name', '').lower():
-                    WORKING_MODEL = m['name']
-                    return WORKING_MODEL
-    except Exception:
-        pass
-        
-    return "models/gemini-1.5-flash" # Резервный вариант
-
 @app.route('/', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
@@ -43,26 +19,37 @@ def webhook():
     TOKEN = os.environ.get("TOKEN")
     GEMINI_KEY = os.environ.get("GEMINI_KEY")
     
-    # Автоматически получаем правильное имя модели
-    model_name = get_working_model(GEMINI_KEY)
+    # Жесткий список моделей: бот будет пробовать их по очереди, пока не пробьет блокировку
+    models_to_try = [
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-1.0-pro",
+        "gemini-pro"
+    ]
     
-    # Формируем точный URL
-    url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={GEMINI_KEY}"
+    reply = None
+    error_log = ""
     
-    try:
-        resp = requests.post(url, json={"contents": [{"parts": [{"text": text}]}]})
-        if resp.status_code == 200:
-            reply = resp.json()['candidates'][0]['content']['parts'][0]['text']
-        else:
-            try:
-                error_details = resp.json().get('error', {}).get('message', f"Код {resp.status_code}")
-                reply = f"Ошибка Gemini {resp.status_code} (Модель: {model_name}): {error_details}"
-            except:
-                reply = f"Ошибка API Gemini: {resp.status_code}"
-    except Exception as e:
-        reply = f"Системная ошибка: {str(e)}"
+    for model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}"
+        try:
+            resp = requests.post(url, json={"contents": [{"parts": [{"text": text}]}]})
+            if resp.status_code == 200:
+                # Успех! Забираем текст и немедленно выходим из цикла
+                reply = resp.json()['candidates'][0]['content']['parts'][0]['text']
+                break
+            else:
+                # Записываем ошибку, чтобы понимать, кто отказал, и идем к следующей модели
+                msg = resp.json().get('error', {}).get('message', 'Ошибка')
+                error_log += f"\n[{model}: {msg}]"
+        except Exception as e:
+            error_log += f"\n[{model}: {str(e)}]"
             
-    # Отправляем результат обратно в Telegram
+    # Если вообще ни одна модель не пустила (что маловероятно)
+    if not reply:
+        reply = f"Ни одна модель не ответила. Лог ошибок от Google: {error_log}"
+            
+    # Отправка финального ответа в Telegram
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
                   json={"chat_id": chat_id, "text": reply})
             
