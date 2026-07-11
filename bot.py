@@ -19,31 +19,21 @@ def webhook():
     TOKEN = os.environ.get("TOKEN")
     GEMINI_KEY = os.environ.get("GEMINI_KEY")
     
-    # Список адресов: сначала пробуем стабильный v1 со свежим именем, потом v1beta
-    urls = [
-        f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_KEY}",
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_KEY}"
-    ]
+    # Подключаем классическую базовую модель, доступную во всех регионах
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_KEY}"
     
-    reply = None
-    last_error = ""
-    
-    for url in urls:
-        try:
-            resp = requests.post(url, json={"contents": [{"parts": [{"text": text}]}]})
-            if resp.status_code == 200:
-                reply = resp.json()['candidates'][0]['content']['parts'][0]['text']
-                break
-            else:
-                try:
-                    last_error = resp.json().get('error', {}).get('message', f"Код {resp.status_code}")
-                except:
-                    last_error = f"Статус {resp.status_code}"
-        except Exception as e:
-            last_error = str(e)
-            
-    if not reply:
-        reply = f"Ошибка авторизации или модели Gemini. Ответ Google: {last_error}"
+    try:
+        resp = requests.post(url, json={"contents": [{"parts": [{"text": text}]}]})
+        if resp.status_code == 200:
+            reply = resp.json()['candidates'][0]['content']['parts'][0]['text']
+        else:
+            try:
+                error_details = resp.json().get('error', {}).get('message', f"Код {resp.status_code}")
+                reply = f"Ошибка Gemini {resp.status_code}: {error_details}"
+            except:
+                reply = f"Ошибка API Gemini: {resp.status_code}"
+    except Exception as e:
+        reply = f"Ошибка: {str(e)}"
             
     # Отправка ответа в Telegram
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
