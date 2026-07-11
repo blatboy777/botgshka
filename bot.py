@@ -4,6 +4,30 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
+# Переменная для сохранения найденной рабочей модели
+WORKING_MODEL = None
+
+def get_working_model(api_key):
+    global WORKING_MODEL
+    if WORKING_MODEL:
+        return WORKING_MODEL
+        
+    # Спрашиваем у Google список всех доступных моделей для твоего ключа
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+    try:
+        resp = requests.get(url)
+        if resp.status_code == 200:
+            models_data = resp.json().get('models', [])
+            for m in models_data:
+                # Ищем первую модель Gemini, которая поддерживает генерацию текста
+                if 'generateContent' in m.get('supportedGenerationMethods', []) and 'gemini' in m.get('name', '').lower():
+                    WORKING_MODEL = m['name']
+                    return WORKING_MODEL
+    except Exception:
+        pass
+        
+    return "models/gemini-1.5-flash" # Резервный вариант
+
 @app.route('/', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
@@ -19,8 +43,11 @@ def webhook():
     TOKEN = os.environ.get("TOKEN")
     GEMINI_KEY = os.environ.get("GEMINI_KEY")
     
-    # Подключаем классическую базовую модель, доступную во всех регионах
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_KEY}"
+    # Автоматически получаем правильное имя модели
+    model_name = get_working_model(GEMINI_KEY)
+    
+    # Формируем точный URL
+    url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={GEMINI_KEY}"
     
     try:
         resp = requests.post(url, json={"contents": [{"parts": [{"text": text}]}]})
@@ -29,13 +56,13 @@ def webhook():
         else:
             try:
                 error_details = resp.json().get('error', {}).get('message', f"Код {resp.status_code}")
-                reply = f"Ошибка Gemini {resp.status_code}: {error_details}"
+                reply = f"Ошибка Gemini {resp.status_code} (Модель: {model_name}): {error_details}"
             except:
                 reply = f"Ошибка API Gemini: {resp.status_code}"
     except Exception as e:
-        reply = f"Ошибка: {str(e)}"
+        reply = f"Системная ошибка: {str(e)}"
             
-    # Отправка ответа в Telegram
+    # Отправляем результат обратно в Telegram
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
                   json={"chat_id": chat_id, "text": reply})
             
