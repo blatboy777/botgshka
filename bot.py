@@ -19,15 +19,20 @@ def webhook():
     TOKEN = os.environ.get("TOKEN")
     GEMINI_KEY = os.environ.get("GEMINI_KEY")
     
-    # Прямой вызов модели
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+    # Меняем модель на gemini-2.5-flash — она стабильнее обходит ошибки 404
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
     
     try:
         resp = requests.post(url, json={"contents": [{"parts": [{"text": text}]}]})
         if resp.status_code == 200:
             reply = resp.json()['candidates'][0]['content']['parts'][0]['text']
         else:
-            reply = f"Ошибка API Gemini: {resp.status_code}"
+            # Если опять 404, бот напишет точную причину от Google
+            try:
+                error_details = resp.json().get('error', {}).get('message', 'Нет деталей')
+                reply = f"Ошибка Gemini {resp.status_code}: {error_details}"
+            except:
+                reply = f"Ошибка API Gemini: {resp.status_code}"
     except Exception as e:
         reply = f"Ошибка: {str(e)}"
             
