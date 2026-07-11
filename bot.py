@@ -4,7 +4,7 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# Твой ID для получения уведомлений
+# Твой ID, который ты прислал
 MY_ID = "1717246201"
 
 @app.route('/', methods=['POST'])
@@ -22,11 +22,11 @@ def webhook():
     API_KEY = os.environ.get("YANDEX_API_KEY")
     FOLDER_ID = os.environ.get("YANDEX_FOLDER_ID")
     
-    # 1. Если сообщение пришло от ТЕБЯ — бот игнорирует (чтобы не зациклиться)
+    # Бот игнорирует сообщения от тебя, чтобы не было зацикливания
     if str(chat_id) == MY_ID:
         return "ok", 200
 
-    # 2. Анализируем входящее сообщение через ЯндексGPT
+    # Запрос к YandexGPT для анализа входящего сообщения
     url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
     headers = {"Authorization": f"Api-Key {API_KEY}", "x-folder-id": FOLDER_ID}
     
@@ -39,12 +39,18 @@ def webhook():
         ]
     }
     
-    response = requests.post(url, headers=headers, json=payload).json()
-    analysis = response['result']['alternatives'][0]['message']['text']
+    try:
+        response = requests.post(url, headers=headers, json=payload).json()
+        analysis = response['result']['alternatives'][0]['message']['text']
+    except Exception as e:
+        analysis = f"Не удалось проанализировать сообщение: {str(e)}"
     
-    # 3. Отправляем отчет ТЕБЕ
+    # Отправляем отчет ТЕБЕ
     notification = f"📩 Новое сообщение от {sender_name}:\n{text}\n\n🤖 Анализ:\n{analysis}"
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
                   json={"chat_id": MY_ID, "text": notification})
             
     return "ok", 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
