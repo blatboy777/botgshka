@@ -1,6 +1,7 @@
 import os
 import requests
 from flask import Flask, request
+import google.generativeai as genai
 
 app = Flask(__name__)
 
@@ -19,37 +20,20 @@ def webhook():
     TOKEN = os.environ.get("TOKEN")
     GEMINI_KEY = os.environ.get("GEMINI_KEY")
     
-    # Жесткий список моделей: бот будет пробовать их по очереди, пока не пробьет блокировку
-    models_to_try = [
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-1.0-pro",
-        "gemini-pro"
-    ]
-    
-    reply = None
-    error_log = ""
-    
-    for model in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}"
-        try:
-            resp = requests.post(url, json={"contents": [{"parts": [{"text": text}]}]})
-            if resp.status_code == 200:
-                # Успех! Забираем текст и немедленно выходим из цикла
-                reply = resp.json()['candidates'][0]['content']['parts'][0]['text']
-                break
-            else:
-                # Записываем ошибку, чтобы понимать, кто отказал, и идем к следующей модели
-                msg = resp.json().get('error', {}).get('message', 'Ошибка')
-                error_log += f"\n[{model}: {msg}]"
-        except Exception as e:
-            error_log += f"\n[{model}: {str(e)}]"
+    reply = ""
+    try:
+        # Настраиваем официальную библиотеку Google
+        genai.configure(api_key=GEMINI_KEY)
+        
+        # Вызываем самую стабильную модель через SDK
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(text)
+        
+        reply = response.text
+    except Exception as e:
+        reply = f"Ошибка официального SDK: {str(e)}"
             
-    # Если вообще ни одна модель не пустила (что маловероятно)
-    if not reply:
-        reply = f"Ни одна модель не ответила. Лог ошибок от Google: {error_log}"
-            
-    # Отправка финального ответа в Telegram
+    # Отправка ответа в Telegram
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
                   json={"chat_id": chat_id, "text": reply})
             
