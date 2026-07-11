@@ -7,7 +7,7 @@ app = Flask(__name__)
 @app.route('/', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
-        return "Бот работает!", 200
+        return "Бот DeepSeek работает!", 200
         
     data = request.json
     if not data or 'message' not in data:
@@ -17,24 +17,36 @@ def webhook():
     text = data['message'].get('text', '...')
     
     TOKEN = os.environ.get("TOKEN")
-    GEMINI_KEY = os.environ.get("GEMINI_KEY")
+    # Твой новый ключ DeepSeek
+    DEEPSEEK_KEY = os.environ.get("DEEPSEEK_KEY")
     
-    # Используем версию v1 и самую стабильную модель gemini-1.0-pro
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.0-pro:generateContent?key={GEMINI_KEY}"
+    # URL API DeepSeek
+    url = "https://api.deepseek.com/chat/completions"
     
-    payload = {"contents": [{"parts": [{"text": text}]}]}
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [{"role": "user", "content": text}],
+        "stream": False
+    }
     
     try:
-        response = requests.post(url, json=payload)
+        response = requests.post(url, headers=headers, json=payload)
         res_data = response.json()
         
         if response.status_code == 200:
-            reply = res_data['candidates'][0]['content']['parts'][0]['text']
+            reply = res_data['choices'][0]['message']['content']
         else:
-            reply = f"Ошибка {response.status_code}: {res_data.get('error', {}).get('message', 'Ошибка API')}"
-    except Exception as e:
-        reply = f"Ошибка: {str(e)}"
+            reply = f"Ошибка DeepSeek ({response.status_code}): {res_data.get('error', {}).get('message', 'Неизвестная ошибка')}"
             
+    except Exception as e:
+        reply = f"Системная ошибка: {str(e)}"
+            
+    # Отправка ответа в Telegram
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
                   json={"chat_id": chat_id, "text": reply})
             
