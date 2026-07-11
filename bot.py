@@ -1,7 +1,6 @@
 import os
 import requests
 from flask import Flask, request
-import google.generativeai as genai
 
 app = Flask(__name__)
 
@@ -20,20 +19,25 @@ def webhook():
     TOKEN = os.environ.get("TOKEN")
     GEMINI_KEY = os.environ.get("GEMINI_KEY")
     
-    reply = ""
+    # Прямой вызов v1beta для модели gemini-1.5-flash
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+    
+    payload = {
+        "contents": [{"parts": [{"text": text}]}]
+    }
+    
     try:
-        # Настраиваем SDK с принудительным использованием стабильной версии v1
-        genai.configure(api_key=GEMINI_KEY, api_version='v1')
+        response = requests.post(url, json=payload)
+        res_data = response.json()
         
-        # Используем модель, которая в v1 доступна всем
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(text)
-        
-        reply = response.text
-    except Exception as e:
-        reply = f"Ошибка SDK v1: {str(e)}"
+        if response.status_code == 200:
+            reply = res_data['candidates'][0]['content']['parts'][0]['text']
+        else:
+            reply = f"Ошибка {response.status_code}: {res_data.get('error', {}).get('message', 'Неизвестная ошибка')}"
             
-    # Отправка ответа
+    except Exception as e:
+        reply = f"Системная ошибка: {str(e)}"
+            
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
                   json={"chat_id": chat_id, "text": reply})
             
