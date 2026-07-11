@@ -19,22 +19,33 @@ def webhook():
     TOKEN = os.environ.get("TOKEN")
     GEMINI_KEY = os.environ.get("GEMINI_KEY")
     
-    # Используем стабильную актуальную версию v1 и модель gemini-1.5-flash
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+    # Список адресов: сначала пробуем стабильный v1 со свежим именем, потом v1beta
+    urls = [
+        f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_KEY}",
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_KEY}"
+    ]
     
-    try:
-        resp = requests.post(url, json={"contents": [{"parts": [{"text": text}]}]})
-        if resp.status_code == 200:
-            reply = resp.json()['candidates'][0]['content']['parts'][0]['text']
-        else:
-            try:
-                error_details = resp.json().get('error', {}).get('message', 'Нет деталей')
-                reply = f"Ошибка Gemini {resp.status_code}: {error_details}"
-            except:
-                reply = f"Ошибка API Gemini: {resp.status_code}"
-    except Exception as e:
-        reply = f"Ошибка: {str(e)}"
+    reply = None
+    last_error = ""
+    
+    for url in urls:
+        try:
+            resp = requests.post(url, json={"contents": [{"parts": [{"text": text}]}]})
+            if resp.status_code == 200:
+                reply = resp.json()['candidates'][0]['content']['parts'][0]['text']
+                break
+            else:
+                try:
+                    last_error = resp.json().get('error', {}).get('message', f"Код {resp.status_code}")
+                except:
+                    last_error = f"Статус {resp.status_code}"
+        except Exception as e:
+            last_error = str(e)
             
+    if not reply:
+        reply = f"Ошибка авторизации или модели Gemini. Ответ Google: {last_error}"
+            
+    # Отправка ответа в Telegram
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
                   json={"chat_id": chat_id, "text": reply})
             
